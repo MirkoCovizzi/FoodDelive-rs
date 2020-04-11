@@ -1,10 +1,5 @@
-use std::collections::HashMap;
-
-struct Rider {
-    orders: HashMap<usize, f32>,
-    route: Option<Vec<usize>>
-}
+mod rider;
 
 fn main() {
-    println!("Hello, world!");
+
 }

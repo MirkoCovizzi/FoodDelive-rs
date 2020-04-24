@@ -1,17 +1,17 @@
-use std::collections::HashMap;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct Rider {
     orders: HashMap<u32, u32>,
-    route: Option<Vec<u32>>
+    route: Option<Vec<u32>>,
 }
 
 impl Rider {
     pub fn new() -> Rider {
         Rider {
             orders: HashMap::new(),
-            route: None
+            route: None,
         }
     }
 
@@ -20,7 +20,8 @@ impl Rider {
     }
 
     pub fn sum_tips(&self) -> u32 {
-        self.orders.keys()
+        self.orders
+            .keys()
             .into_iter()
             .map(|&k| self.orders.get(&k).unwrap())
             .sum::<u32>()

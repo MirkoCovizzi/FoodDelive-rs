@@ -7,7 +7,6 @@ use rand::seq::SliceRandom;
 
 use log::*;
 
-mod locations;
 mod rider;
 
 const NUM_LOCATIONS: u32 = 15;

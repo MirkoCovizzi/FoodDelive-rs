@@ -2,10 +2,10 @@ extern crate simple_logger;
 
 use std::collections::HashMap;
 
+use log::*;
 use rand::seq::SliceRandom;
 
 use crate::rider::Rider;
-use log::*;
 
 mod rider;
 
@@ -54,11 +54,38 @@ impl CgaTree {
             let val = max_rider - (sum_tot / (NUM_RIDERS as f64 - 1.0));
 
             let _max_one_tree_max = 0.0;
-            let _one_tree_bound = false;
+            let one_tree_bound = false;
 
             if riders_sorted.last().unwrap().orders.keys().len() >= 4 && val < self.best_difference
             {
-                info!("First branch!");
+                for r in riders_sorted {
+                    if !one_tree_bound {
+                        let nodes = r.orders.keys();
+                        let _max_one_tree = 0;
+                        if nodes.len() >= 4 {
+                            for node in nodes.clone() {
+                                let mut r_nodes = vec![];
+                                for nd in nodes.clone() {
+                                    if nd != node {
+                                        r_nodes.push(nd);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if val < self.best_difference && !one_tree_bound {
+                let tsp_bound = false;
+                if val > 0.0 && locations.is_empty() {
+                    for _r in riders {
+                        if !tsp_bound {}
+                    }
+                }
+                if val > 0.0 && locations.is_empty() && !tsp_bound {
+                    self.best_difference = val;
+                }
             }
         }
     }

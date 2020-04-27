@@ -25,7 +25,7 @@ impl Rider {
         self.orders
             .keys()
             .map(|&k| self.orders.get(&k).unwrap())
-            .sum::<_>()
+            .sum()
     }
 }
 

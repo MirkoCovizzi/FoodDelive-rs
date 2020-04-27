@@ -33,11 +33,11 @@ impl CgaTree {
         if !self.finished {
             self.nodes_number += 1;
 
-            let mut locations_sorted = locations.values().collect::<Vec<_>>();
+            let mut locations_sorted: Vec<&f64> = locations.values().collect();
             locations_sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
             locations_sorted.reverse();
 
-            let mut riders_sorted = riders.values().collect::<Vec<_>>();
+            let mut riders_sorted: Vec<&Rider> = riders.values().collect();
             riders_sorted.sort();
 
             let mut sum_riders = 0.0;
@@ -45,13 +45,13 @@ impl CgaTree {
                 sum_riders += r.sum_tips();
             }
 
-            let locations_values_sum = locations.values().sum::<f64>();
+            let locations_values_sum: f64 = locations.values().sum();
 
             let sum_tot = sum_riders + locations_values_sum;
 
             let max_rider = riders_sorted.last().unwrap().sum_tips();
 
-            let val = max_rider - (sum_tot / (NUM_RIDERS - 1) as f64);
+            let val = max_rider - (sum_tot / (NUM_RIDERS as f64 - 1.0));
 
             let _max_one_tree_max = 0.0;
             let _one_tree_bound = false;
@@ -67,7 +67,7 @@ impl CgaTree {
 fn main() {
     simple_logger::init().expect("Can't initialize logging.");
 
-    let range = (MIN_TIP..MAX_TIP).collect::<Vec<_>>();
+    let range: Vec<u32> = (MIN_TIP..MAX_TIP).collect();
     let mut rng = rand::thread_rng();
     let mut locations = HashMap::new();
     let mut riders = HashMap::new();
@@ -78,22 +78,22 @@ fn main() {
 
     for i in 0..NUM_RIDERS {
         let mut rider = Rider::new(i);
-        rider.add_tip(NUM_LOCATIONS, 10.0);
+        rider.add_tip(NUM_LOCATIONS, 0.0);
         riders.insert(i, rider);
     }
 
-    let mut locations_sorted = locations.values().collect::<Vec<_>>();
+    let mut locations_sorted: Vec<&f64> = locations.values().collect();
 
     locations_sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
     locations_sorted.reverse();
     info!("{:?}", locations_sorted);
 
-    let locations_values_sum = locations.values().sum::<f64>();
+    let locations_values_sum: f64 = locations.values().sum();
     info!("Tot: {:?}", locations_values_sum);
 
-    let num_riders_f = NUM_RIDERS as f64;
-    let max_opt_relax = (locations_values_sum / num_riders_f).ceil();
-    let opt_relax = max_opt_relax - (locations_values_sum - max_opt_relax) / (num_riders_f - 1.0);
+    let max_opt_relax = (locations_values_sum / NUM_RIDERS as f64).ceil();
+    let opt_relax =
+        max_opt_relax - (locations_values_sum - max_opt_relax) / (NUM_RIDERS as f64 - 1.0);
     info!("Z* Relaxed: {:?}", opt_relax);
 
     let mut cga_tree = CgaTree::new(locations_values_sum);

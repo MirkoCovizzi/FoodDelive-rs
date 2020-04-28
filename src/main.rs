@@ -94,21 +94,21 @@ impl CgaTree {
     }
 }
 
-fn distance(node_1: Option<&(u32, f64, f64)>, node_2: Option<&(u32, f64, f64)>) -> (u32, f64, f64) {
+fn distance(node_1: Option<&(u32, f64, f64)>, node_2: Option<&(u32, f64, f64)>) -> f64 {
     let node_1 = node_1.unwrap();
     let node_2 = node_2.unwrap();
     let x_1 = node_1.1;
     let x_2 = node_2.1;
     let y_1 = node_1.2;
     let y_2 = node_2.2;
-    (0, 0.0, ((x_1 - x_2).powi(2) + (y_1 - y_2).powi(2)).sqrt())
+    ((x_1 - x_2).powi(2) + (y_1 - y_2).powi(2)).sqrt()
 }
 
 fn main() {
     simple_logger::init().expect("Can't initialize logging.");
     let mut rng = rand::thread_rng();
 
-    let mut graph = Graph::<(u32, f64, f64), (u32, f64, f64)>::new();
+    let mut graph = Graph::<(u32, f64, f64), f64>::new();
     let t_range: Vec<u32> = (MIN_T..MAX_T).collect();
     for i in 0..NUM_LOCATIONS + 1 {
         let x = *t_range.choose(&mut rng).unwrap() as f64;

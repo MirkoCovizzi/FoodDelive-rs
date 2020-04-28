@@ -6,6 +6,7 @@ use log::*;
 use rand::seq::SliceRandom;
 
 use crate::rider::Rider;
+use petgraph::Graph;
 
 mod rider;
 
@@ -13,6 +14,8 @@ const NUM_LOCATIONS: u32 = 15;
 const NUM_RIDERS: u32 = 5;
 const MIN_TIP: u32 = 1;
 const MAX_TIP: u32 = 10;
+const MIN_T: u32 = 1;
+const MAX_T: u32 = 120;
 
 struct CgaTree {
     best_difference: f64,
@@ -91,16 +94,42 @@ impl CgaTree {
     }
 }
 
+fn distance(node_1: Option<&(u32, f64, f64)>, node_2: Option<&(u32, f64, f64)>) -> (u32, f64, f64) {
+    let node_1 = node_1.unwrap();
+    let node_2 = node_2.unwrap();
+    let x_1 = node_1.1;
+    let x_2 = node_2.1;
+    let y_1 = node_1.2;
+    let y_2 = node_2.2;
+    (0, 0.0, ((x_1 - x_2).powi(2) + (y_1 - y_2).powi(2)).sqrt())
+}
+
 fn main() {
     simple_logger::init().expect("Can't initialize logging.");
-
-    let range: Vec<u32> = (MIN_TIP..MAX_TIP).collect();
     let mut rng = rand::thread_rng();
+
+    let mut graph = Graph::<(u32, f64, f64), (u32, f64, f64)>::new();
+    let t_range: Vec<u32> = (MIN_T..MAX_T).collect();
+    for i in 0..NUM_LOCATIONS + 1 {
+        let x = *t_range.choose(&mut rng).unwrap() as f64;
+        let y = *t_range.choose(&mut rng).unwrap() as f64;
+        let tup = (i, x, y);
+        graph.add_node(tup);
+    }
+    for i in graph.node_indices() {
+        for j in graph.node_indices() {
+            if i != j {
+                graph.add_edge(i, j, distance(graph.node_weight(i), graph.node_weight(j)));
+            }
+        }
+    }
+
+    let tip_range: Vec<u32> = (MIN_TIP..MAX_TIP).collect();
     let mut locations = HashMap::new();
     let mut riders = HashMap::new();
 
     for i in 0..NUM_LOCATIONS {
-        locations.insert(i, *range.choose(&mut rng).unwrap() as f64);
+        locations.insert(i, *tip_range.choose(&mut rng).unwrap() as f64);
     }
 
     for i in 0..NUM_RIDERS {

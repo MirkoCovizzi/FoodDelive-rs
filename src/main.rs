@@ -108,7 +108,7 @@ fn main() {
     simple_logger::init().expect("Can't initialize logging.");
     let mut rng = rand::thread_rng();
 
-    let mut graph = Graph::<(u32, f64, f64), f64>::new();
+    let mut graph: Graph<(u32, f64, f64), f64> = Graph::new();
     let t_range: Vec<u32> = (MIN_T..MAX_T).collect();
     for i in 0..NUM_LOCATIONS + 1 {
         let x = *t_range.choose(&mut rng).unwrap() as f64;

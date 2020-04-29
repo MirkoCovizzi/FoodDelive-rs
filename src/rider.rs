@@ -1,23 +1,23 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Rider {
-    id: u32,
-    pub orders: HashMap<u32, f64>,
-    pub route: Option<Vec<u32>>,
+    pub id: usize,
+    pub orders: HashMap<usize, f64>,
+    pub route: Vec<usize>,
 }
 
 impl Rider {
-    pub fn new(id: u32) -> Rider {
+    pub fn new(id: usize) -> Rider {
         Rider {
             id,
             orders: HashMap::new(),
-            route: None,
+            route: vec![],
         }
     }
 
-    pub fn add_tip(&mut self, location: u32, tip: f64) {
+    pub fn add_tip(&mut self, location: usize, tip: f64) {
         self.orders.insert(location, tip);
     }
 

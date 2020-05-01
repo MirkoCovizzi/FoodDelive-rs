@@ -3,17 +3,13 @@ use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub struct Rider {
-    pub id: usize,
     pub orders: HashMap<usize, f64>,
-    pub route: Vec<usize>,
 }
 
 impl Rider {
-    pub fn new(id: usize) -> Rider {
+    pub fn new() -> Rider {
         Rider {
-            id,
             orders: HashMap::new(),
-            route: vec![],
         }
     }
 

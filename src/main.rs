@@ -3,21 +3,24 @@ extern crate simple_logger;
 use std::collections::HashMap;
 
 use log::*;
+use petgraph::algo::min_spanning_tree;
+use petgraph::data::FromElements;
+use petgraph::stable_graph::NodeIndex;
+use petgraph::visit::EdgeRef;
+use petgraph::Graph;
 use rand::seq::SliceRandom;
 
 use crate::rider::Rider;
-use petgraph::stable_graph::NodeIndex;
-use petgraph::Graph;
-
 mod rider;
 
-const NUM_LOCATIONS: usize = 15;
-const NUM_RIDERS: usize = 5;
-const MIN_TIP: u32 = 1;
-const MAX_TIP: u32 = 10;
+const NUM_LOCATIONS: usize = 150;
+const NUM_RIDERS: usize = 50;
+const MIN_TIP: f64 = 1.0;
+const MAX_TIP: f64 = 10.0;
 const MIN_T: f64 = 1.0;
 const MAX_T: f64 = 120.0;
 const T: f64 = 1000.0;
+const ERROR: f64 = 0.000_000_001;
 
 fn distance(node_1: Option<&(f64, f64)>, node_2: Option<&(f64, f64)>) -> f64 {
     let node_1 = node_1.unwrap();
@@ -25,20 +28,19 @@ fn distance(node_1: Option<&(f64, f64)>, node_2: Option<&(f64, f64)>) -> f64 {
     ((node_1.0 - node_2.0).powi(2) + (node_1.1 - node_2.1).powi(2)).sqrt()
 }
 
-fn cost(g: &Graph<&(f64, f64), &f64>, route: &Vec<&usize>) -> f64 {
+fn cost(g: &Graph<&(f64, f64), &f64>, route: &[&usize]) -> f64 {
     let mut c = 0.0;
     for i in 0..route.len() - 1 {
         let first = route[i];
         let second = route[i + 1];
-        let edge = g
-            .find_edge(NodeIndex::new(*first), NodeIndex::new(*second))
-            .unwrap();
-        c += **g.edge_weight(edge).unwrap();
+        if let Some(edge) = g.find_edge(NodeIndex::new(*first), NodeIndex::new(*second)) {
+            c += **g.edge_weight(edge).unwrap();
+        }
     }
     c
 }
 
-fn nearest_neighbor(g: &Graph<&(f64, f64), &f64>, route: &Vec<&usize>) -> Vec<usize> {
+fn nearest_neighbor(g: &Graph<&(f64, f64), &f64>, route: &[&usize]) -> Vec<usize> {
     let mut nn_route = vec![0; route.len()];
     nn_route[0] = *route[0];
 
@@ -55,8 +57,8 @@ fn nearest_neighbor(g: &Graph<&(f64, f64), &f64>, route: &Vec<&usize>) -> Vec<us
                 }
             }
         }
-        if best_n.is_some() {
-            nn_route[i + 1] = best_n.unwrap().index();
+        if let Some(best) = best_n {
+            nn_route[i + 1] = best.index();
         }
     }
     nn_route[route.len() - 1] = *route[0];
@@ -67,30 +69,35 @@ struct CGATree {
     graph: Graph<(f64, f64), f64>,
     best_difference: f64,
     best_riders: HashMap<usize, Rider>,
+    best_routes: HashMap<usize, Vec<usize>>,
+    opt_relax: f64,
     nodes_number: u32,
     finished: bool,
 }
 
 impl CGATree {
-    fn new(graph: Graph<(f64, f64), f64>, best_difference: f64) -> Self {
+    fn new(graph: Graph<(f64, f64), f64>, best_difference: f64, opt_relax: f64) -> Self {
         Self {
             graph,
             best_difference,
             best_riders: HashMap::new(),
+            best_routes: HashMap::new(),
+            opt_relax,
             nodes_number: 0,
             finished: false,
         }
     }
 
+    #[allow(clippy::cognitive_complexity)]
     fn search(&mut self, locations: HashMap<usize, f64>, riders: HashMap<usize, Rider>) {
         if !self.finished {
             self.nodes_number += 1;
 
-            let mut locations_sorted: Vec<(&usize, &f64)> = locations.iter().collect();
+            let mut locations_sorted = locations.iter().collect::<Vec<_>>();
             locations_sorted.sort_by(|a, b| a.1.partial_cmp(b.1).unwrap());
             locations_sorted.reverse();
 
-            let mut riders_sorted: Vec<(&usize, &Rider)> = riders.iter().collect();
+            let mut riders_sorted = riders.iter().collect::<Vec<_>>();
             riders_sorted.sort_by(|a, b| a.1.partial_cmp(b.1).unwrap());
 
             let mut sum_riders = 0.0;
@@ -98,16 +105,12 @@ impl CGATree {
                 sum_riders += r.1.sum_tips();
             }
 
-            let locations_values_sum: f64 = locations.values().sum();
-
+            let locations_values_sum = locations.values().sum::<f64>();
             let sum_tot = sum_riders + locations_values_sum;
-
             let max_rider = riders_sorted.last().unwrap().1.sum_tips();
-
             let val = max_rider - (sum_tot / (NUM_RIDERS as f64 - 1.0));
 
-            let _max_one_tree_max = 0.0;
-            let one_tree_bound = false;
+            let mut one_tree_bound = false;
 
             if riders_sorted.last().unwrap().1.orders.keys().len() >= 4
                 && val < self.best_difference
@@ -115,7 +118,7 @@ impl CGATree {
                 for r in riders_sorted.iter() {
                     if !one_tree_bound {
                         let nodes = &r.1.orders;
-                        let _max_one_tree = 0;
+                        let mut min_one_tree = f64::MAX;
                         if nodes.len() >= 4 {
                             for node in nodes.keys() {
                                 let mut r_nodes = vec![];
@@ -124,73 +127,127 @@ impl CGATree {
                                         r_nodes.push(nd);
                                     }
                                 }
-
-                                let _h = self.graph.filter_map(
-                                    |n, _| {
+                                r_nodes.insert(0, &NUM_LOCATIONS);
+                                r_nodes.push(&NUM_LOCATIONS);
+                                let h = self.graph.filter_map(
+                                    |n, nw| {
                                         if r_nodes.contains(&&n.index()) {
-                                            Some(n)
+                                            Some(nw)
                                         } else {
                                             None
                                         }
                                     },
-                                    |e, _| Some(e),
+                                    |_, ew| Some(ew),
                                 );
+                                let mst = min_spanning_tree(&h);
+                                let mst = Graph::<_, _>::from_elements(mst);
+                                let mut sum_edges = 0.0;
+                                for m in mst.edge_references() {
+                                    sum_edges += **m.weight();
+                                }
+                                let mut best_edge_weight = f64::MAX;
+                                let node_edges = self.graph.edges(NodeIndex::new(*node));
+                                for e in node_edges {
+                                    if r_nodes.contains(&&e.target().index()) {
+                                        let w = *e.weight();
+                                        if w < best_edge_weight {
+                                            best_edge_weight = w;
+                                        }
+                                    }
+                                }
+                                sum_edges += best_edge_weight;
+                                if sum_edges < min_one_tree {
+                                    min_one_tree = sum_edges;
+                                }
                             }
+                        }
+                        if min_one_tree > T {
+                            one_tree_bound = true;
+                            debug!("1-Tree bound!");
                         }
                     }
                 }
             }
 
             if val < self.best_difference && !one_tree_bound {
+                let mut riders_routes = HashMap::new();
                 let mut tsp_bound = false;
                 if val > 0.0 && locations.is_empty() {
+                    debug!("Testing NN...");
                     for r in riders.iter() {
                         if !tsp_bound {
-                            let r_orders: Vec<&usize> = r.1.orders.keys().collect();
-                            let mut route_map = HashMap::new();
-                            let mut index = 0usize;
+                            let mut r_orders = r.1.orders.keys().collect::<Vec<_>>();
+                            r_orders.insert(0, &NUM_LOCATIONS);
+                            r_orders.push(&NUM_LOCATIONS);
                             let h = self.graph.filter_map(
-                                |n, nw| {
-                                    if r_orders.contains(&&n.index()) {
-                                        route_map.insert(n.index(), index);
-                                        index += 1;
-                                        Some(nw)
-                                    } else {
-                                        None
+                                |_, nw| Some(nw),
+                                |e, ew| {
+                                    if let Some((n1, n2)) = self.graph.edge_endpoints(e) {
+                                        if r_orders.contains(&&n1.index())
+                                            && r_orders.contains(&&n2.index())
+                                        {
+                                            return Some(ew);
+                                        }
                                     }
+                                    None
                                 },
-                                |_, ew| Some(ew),
                             );
-                            let mut route: Vec<&usize> =
-                                r_orders.iter().map(|i| route_map.get(i).unwrap()).collect();
-                            route.push(route_map.get(&NUM_LOCATIONS).unwrap());
-                            let greedy_route = nearest_neighbor(&h, &route);
-                            let greedy_route_ref = greedy_route.iter().map(|x| x).collect();
-                            // Compute 2-opt of previous
+                            let greedy_route = nearest_neighbor(&h, &r_orders);
+                            let greedy_route_ref =
+                                greedy_route.iter().map(|x| x).collect::<Vec<_>>();
                             if cost(&h, &greedy_route_ref) > T {
                                 debug!("Bound: Route cost: {}", cost(&h, &greedy_route_ref));
                                 tsp_bound = true;
                             } else {
-                                // r.1.route = greedy_route;
+                                riders_routes.insert(*r.0, greedy_route);
                             }
                         }
                     }
                 }
                 if val > 0.0 && locations.is_empty() && !tsp_bound {
                     self.best_difference = val;
-                    info!("New best difference: {}", val);
+                    info!("New best: {} (Relaxed optimum: {})", val, self.opt_relax);
                     self.best_riders = riders.clone();
+                    self.best_routes = riders_routes.clone();
                     info!("New best partition: {:?}", riders);
                     info!("Sums: ");
                     for r in &riders {
                         info!("Rider #{}: {}", r.0, r.1.sum_tips());
+                        let mut r_orders = r.1.orders.keys().collect::<Vec<_>>();
+                        r_orders.insert(0, &NUM_LOCATIONS);
+                        r_orders.push(&NUM_LOCATIONS);
+                        let h = self.graph.filter_map(
+                            |_, nw| Some(nw),
+                            |e, ew| {
+                                if let Some((n1, n2)) = self.graph.edge_endpoints(e) {
+                                    if r_orders.contains(&&n1.index())
+                                        && r_orders.contains(&&n2.index())
+                                    {
+                                        return Some(ew);
+                                    }
+                                }
+                                None
+                            },
+                        );
+                        info!("Route: {:?}", riders_routes.get(r.0).unwrap());
+                        let route_ref = riders_routes
+                            .get(r.0)
+                            .unwrap()
+                            .iter()
+                            .map(|x| x)
+                            .collect::<Vec<_>>();
+                        info!("TSP: {}", cost(&h, &route_ref));
+                    }
+
+                    if val - self.opt_relax == 0.0 {
+                        self.finished = true;
                     }
                 }
-                if locations.len() > 0 {
+                if !locations.is_empty() {
                     let mut next_locations = vec![];
                     let next_tip = locations_sorted[0];
                     for l in locations_sorted.iter() {
-                        if l.1 == next_tip.1 {
+                        if (l.1 - next_tip.1).abs() < ERROR {
                             next_locations.push(l.0);
                         }
                     }
@@ -199,8 +256,7 @@ impl CGATree {
                     for r in riders_sorted.iter() {
                         if !different_sum_riders_indexes
                             .values()
-                            .collect::<Vec<&f64>>()
-                            .contains(&&r.1.sum_tips())
+                            .any(|x| (x - r.1.sum_tips()).abs() < ERROR)
                         {
                             different_sum_riders_indexes.insert(r.0, r.1.sum_tips());
                         }
@@ -216,30 +272,25 @@ impl CGATree {
                         let mut best_location = None;
                         for l in next_locations.iter() {
                             let mut updated_orders = vec![];
-                            updated_orders.extend(near_orders.keys().into_iter());
+                            updated_orders.extend(near_orders.keys());
                             updated_orders.push(*l);
-                            let mut route_map = HashMap::new();
-                            let mut index = 0usize;
                             let h = self.graph.filter_map(
-                                |n, nw| {
-                                    if updated_orders.contains(&&n.index()) {
-                                        route_map.insert(n.index(), index);
-                                        index += 1;
-                                        Some(nw)
-                                    } else {
-                                        None
+                                |_, nw| Some(nw),
+                                |e, ew| {
+                                    if let Some((n1, n2)) = self.graph.edge_endpoints(e) {
+                                        if updated_orders.contains(&&n1.index())
+                                            && updated_orders.contains(&&n2.index())
+                                        {
+                                            return Some(ew);
+                                        }
                                     }
+                                    None
                                 },
-                                |_, ew| Some(ew),
                             );
-                            let mut route: Vec<&usize> = updated_orders
-                                .iter()
-                                .map(|i| route_map.get(i).unwrap())
-                                .collect();
-                            route.push(route_map.get(&NUM_LOCATIONS).unwrap());
-                            let greedy_route = nearest_neighbor(&h, &route);
-                            let greedy_route = greedy_route.iter().map(|x| x).collect();
-                            let route_cost = cost(&h, &greedy_route);
+                            let greedy_route = nearest_neighbor(&h, &updated_orders);
+                            let greedy_route_ref =
+                                greedy_route.iter().map(|x| x).collect::<Vec<_>>();
+                            let route_cost = cost(&h, &greedy_route_ref);
                             if route_cost < best_cost {
                                 best_cost = route_cost;
                                 best_location = Some(l);
@@ -262,8 +313,8 @@ fn main() {
     simple_logger::init().expect("Can't initialize logging.");
     let mut rng = rand::thread_rng();
 
-    let mut graph: Graph<(f64, f64), f64> = Graph::new();
-    let t_range: Vec<u32> = (MIN_T as u32..MAX_T as u32).collect();
+    let mut graph = Graph::<_, _>::new();
+    let t_range = (MIN_T as u32..MAX_T as u32).collect::<Vec<_>>();
     for _ in 0..NUM_LOCATIONS + 1 {
         let x = *t_range.choose(&mut rng).unwrap() as f64;
         let y = *t_range.choose(&mut rng).unwrap() as f64;
@@ -277,7 +328,7 @@ fn main() {
         }
     }
 
-    let tip_range: Vec<u32> = (MIN_TIP..MAX_TIP).collect();
+    let tip_range = (MIN_TIP as u32..MAX_TIP as u32).collect::<Vec<_>>();
     let mut locations = HashMap::new();
     let mut riders = HashMap::new();
 
@@ -287,17 +338,15 @@ fn main() {
     info!("Locations: {:?}", locations);
 
     for i in 0..NUM_RIDERS {
-        let mut rider = Rider::new(i);
-        rider.add_tip(NUM_LOCATIONS, 0.0);
-        riders.insert(i, rider);
+        riders.insert(i, Rider::new());
     }
 
-    let mut locations_sorted: Vec<&f64> = locations.values().collect();
+    let mut locations_sorted = locations.values().collect::<Vec<_>>();
     locations_sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
     locations_sorted.reverse();
     info!("Locations Sorted: {:?}", locations_sorted);
 
-    let locations_values_sum: f64 = locations.values().sum();
+    let locations_values_sum = locations.values().sum::<f64>();
     info!("Tot: {:?}", locations_values_sum);
 
     let max_opt_relax = (locations_values_sum / NUM_RIDERS as f64).ceil();
@@ -305,6 +354,8 @@ fn main() {
         max_opt_relax - (locations_values_sum - max_opt_relax) / (NUM_RIDERS as f64 - 1.0);
     info!("Z* Relaxed: {:?}", opt_relax);
 
-    let mut cga_tree = CGATree::new(graph, locations_values_sum);
+    let mut cga_tree = CGATree::new(graph, locations_values_sum, opt_relax);
     cga_tree.search(locations, riders);
+
+    dbg!(cga_tree.nodes_number);
 }
